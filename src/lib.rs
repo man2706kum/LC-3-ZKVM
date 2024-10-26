@@ -20,7 +20,7 @@ enum Register {
 /// That is why ADD_IMM is other immediate instructions are defined here
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug)]
-enum Instruction {
+pub enum Instruction {
     ADD(usize, usize, usize),   // ADD DR = SR1 + SR2 (Register mode)
     ADD_IMM(usize, usize, u16), // ADD DR = SR1 + imm5 (Immediate mode)
 
@@ -54,6 +54,7 @@ pub struct VM {
     registers: [u16; REGISTER_COUNT], // 8 general-purpose registers
     pc: u16,                          // Program counter
     condition_flags: u16,             // N=1, Z=2, P=4 flags
+    execution_trace: Vec<ExecutionTrace>, // To store the execution trace
 }
 
 impl VM {
@@ -63,11 +64,16 @@ impl VM {
             registers: [0; REGISTER_COUNT],
             pc: 0,
             condition_flags: 0,
+            execution_trace: Vec::new(),
         }
     }
 
     // Execute an instruction
     pub fn execute(&mut self, instr: Instruction) {
+
+        // Log the current state before executing the instruction
+        self.log_execution_trace(instr);
+
         match instr {
             Instruction::ADD(dr, sr1, sr2) => self.add(dr, sr1, sr2),
             Instruction::ADD_IMM(dr, sr1, imm5) => self.add_imm(dr, sr1, imm5),
@@ -100,6 +106,12 @@ impl VM {
             self.condition_flags = 4;
         }
     }
+
+    fn log_execution_trace(&mut self, instruction: Instruction) {
+        let trace_entry = ExecutionTrace::new(self, instruction);
+        self.execution_trace.push(trace_entry);
+    }
+
 }
 
 impl VM {
@@ -132,8 +144,7 @@ impl VM {
         // Check if the branch should be taken based on the condition flags
         if (n && self.condition_flags == 1) || // N (Negative)
            (z && self.condition_flags == 2) || // Z (Zero)
-           (p && self.condition_flags == 4)
-        // P (Positive)
+           (p && self.condition_flags == 4) // P (Positive)
         {
             // Update the PC by the offset if any of the conditions match
             self.pc = self.pc + offset;
@@ -198,5 +209,28 @@ impl VM {
         // Save current PC in R7 and set PC to trap vector
         self.registers[7] = self.pc;
         self.pc = trap_vector as u16;
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct ExecutionTrace {
+    pub pc: u16,                     // Program counter
+    pub registers: [u16; REGISTER_COUNT], // State of the registers
+    pub memory: Vec<u16>,            // Memory snapshot at the point (you may choose to only log changes)
+    pub condition_flags: u16,        // Condition flags (N, Z, P)
+    pub instruction: Instruction,    // Instruction being executed at this step
+}
+
+impl ExecutionTrace {
+    pub fn new(vm: &VM, instruction: Instruction) -> Self {
+        // Create a snapshot of the current state of the VM
+        ExecutionTrace {
+            pc: vm.pc,
+            registers: vm.registers,
+            memory: vm.memory.to_vec(), // If you only want memory changes, you can optimize this later
+            condition_flags: vm.condition_flags,
+            instruction,
+        }
     }
 }
